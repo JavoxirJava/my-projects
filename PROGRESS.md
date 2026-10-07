@@ -12,8 +12,8 @@
 - [x] Telegram, parolli ZIP zaxira va qayta tiklash.
 - [x] Monitoring, eslatmalar va bot orqali qidirish.
 - [x] Avtomatik tekshiruvlar va brauzerda sinash.
-- [ ] Ajratilgan server muhiti, HTTPS va CI/CD.
-- [ ] Boshqa servislar holatini qayta tekshirish.
+- [x] Ajratilgan server muhiti, HTTPS va CI/CD.
+- [x] Boshqa servislar holatini qayta tekshirish.
 - [ ] Telegram orqali tayyorlik va kirish ma’lumotlarini yuborish.
 
 ## Joylashtirish qarorlari
@@ -41,3 +41,15 @@
 - Desktop va mobil brauzerda to‘liq loyiha oqimi o‘tdi: guruh, loyiha, 2 havola, 2 hisob, parol reveal/preserve, qidiruv, sevimli va arxiv.
 - npm audit: aniqlangan zaifliklar yo‘q.
 - Birinchi GitHub Actions relizi tayyorlanmoqda.
+
+## Production reliz
+
+- Birinchi reliz: `817415c1973099a42b4ef12f31a7bebe1cf73b9c`. GitHub Actions test, build, deploy va HTTPS tekshiruvini muvaffaqiyatli bajardi.
+- CI: https://github.com/JavoxirJava/my-projects/actions/runs/37633909634
+- Sayt: https://my-projects.javohir-dev.uz
+- Web va worker sog‘lom; deployment revision va worker heartbeat mos.
+- Vaqtinchalik browser test sxemasi o‘chirildi; production loyihalari bo‘sh.
+- Predeploy va ishlayotgan baza dumpidan alohida vaqtinchalik bazaga tiklash sinovlari o‘tdi.
+- Boshqa 42 ta servis o‘zgarishsiz ishlamoqda.
+- ZIP upload chegarasi bilan Nginx cheklovi moslashtirildi; alohida sertifikat auto-renew hook tekshirildi.
+- Faqat Markdown o‘zgarishlarida ortiqcha deploy bo‘lmasligi uchun CI path filter qo‘shildi.

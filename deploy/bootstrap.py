@@ -8,7 +8,7 @@ def user(name,home,shell='/usr/sbin/nologin'):
 user('myprojects','/var/lib/my-projects')
 user('myprojects-migrator','/var/lib/my-projects-migrator')
 user('myprojects-deploy','/var/lib/my-projects-deploy','/bin/bash')
-for path,owner,mode in [('/srv/my-projects','root:root','755'),('/srv/my-projects/incoming','myprojects-deploy:myprojects-deploy','700'),('/srv/my-projects/releases','root:root','755'),('/srv/my-projects/packages','root:root','700'),('/etc/my-projects','root:myprojects','750'),('/var/backups/my-projects','root:root','700')]:
+for path,owner,mode in [('/srv/my-projects','root:root','755'),('/srv/my-projects/incoming','myprojects-deploy:myprojects-deploy','700'),('/srv/my-projects/releases','root:root','755'),('/srv/my-projects/packages','root:myprojects','750'),('/etc/my-projects','root:myprojects','750'),('/var/backups/my-projects','root:root','700')]:
  run('install','-d','-m',mode,'-o',owner.split(':')[0],'-g',owner.split(':')[1],path)
 p=pathlib.Path('/etc/my-projects/database.json')
 if p.exists():raise SystemExit('Already provisioned; refusing credential rotation')
