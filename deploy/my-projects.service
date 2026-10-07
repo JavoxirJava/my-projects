@@ -1,0 +1,29 @@
+[Unit]
+Description=My Projects isolated PM2 applications
+After=network-online.target postgresql.service
+Wants=network-online.target
+[Service]
+Type=forking
+User=myprojects
+Group=myprojects
+WorkingDirectory=/srv/my-projects/current
+Environment=PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PM2_HOME=/var/lib/my-projects/pm2
+Environment=HOME=/var/lib/my-projects
+PIDFile=/var/lib/my-projects/pm2/pm2.pid
+ExecStart=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 start /srv/my-projects/current/deploy/ecosystem.config.cjs
+ExecReload=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 startOrRestart /srv/my-projects/current/deploy/ecosystem.config.cjs --update-env
+ExecStop=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 kill
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=55
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/my-projects
+MemoryMax=800M
+TasksMax=128
+[Install]
+WantedBy=multi-user.target
