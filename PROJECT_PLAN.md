@@ -2,7 +2,7 @@
 
 Kelishilgan talablar sanasi: 2026-10-07.
 
-Ushbu fayl keyingi ishlab chiqish uchun asosiy reja hisoblanadi. Funksional talablar, dasturlash tili va quyida ko‘rsatilgan texnologiyalar foydalanuvchi bilan kelishilgan. Dastur ushbu reja asosida amalga oshirilmoqda; joriy holat PROGRESS.md faylida.
+Ushbu fayl keyingi ishlab chiqish uchun asosiy reja hisoblanadi. Funksional talablar, dasturlash tili va quyida ko‘rsatilgan texnologiyalar foydalanuvchi bilan kelishilgan. Dastur ushbu reja asosida amalga oshirildi va productionga joylashtirildi; tekshiruvlar va reliz holati PROGRESS.md faylida.
 
 ## Maqsad va foydalanish
 

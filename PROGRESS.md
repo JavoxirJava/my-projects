@@ -14,7 +14,7 @@
 - [x] Avtomatik tekshiruvlar va brauzerda sinash.
 - [x] Ajratilgan server muhiti, HTTPS va CI/CD.
 - [x] Boshqa servislar holatini qayta tekshirish.
-- [ ] Telegram orqali tayyorlik va kirish ma’lumotlarini yuborish.
+- [x] Telegram orqali tayyorlik va kirish ma’lumotlarini yuborish.
 
 ## Joylashtirish qarorlari
 
@@ -53,3 +53,21 @@
 - Boshqa 42 ta servis o‘zgarishsiz ishlamoqda.
 - ZIP upload chegarasi bilan Nginx cheklovi moslashtirildi; alohida sertifikat auto-renew hook tekshirildi.
 - Faqat Markdown o‘zgarishlarida ortiqcha deploy bo‘lmasligi uchun CI path filter qo‘shildi.
+
+## Yakuniy natija
+
+- Rejadagi funksiyalar bajarildi va productionga chiqarildi.
+- Yakuniy dastur relizi: `62cac6b21fc75d4c63fe29aee10ae6a4c580eef5`.
+- Yakuniy CI/CD: https://github.com/JavoxirJava/my-projects/actions/runs/37634465681 — barcha bosqichlar muvaffaqiyatli.
+- Production HTTPS login va logout tekshirildi; sessiya Secure, HttpOnly, SameSite=Strict.
+- Haqiqiy parolli ZIP zaxira egasining Telegram chatiga yuborildi, bazadagi status `sent`.
+- Production desktop/mobil sahifalar ko‘rildi; mobil gorizontal overflow yo‘q, brauzer xatolari yo‘q.
+- Bot: https://t.me/my_projects_infinite_bot ; /start, /help, /status menyusi o‘rnatildi.
+- Sayt manzili, login-parol va doimiy ZIP paroli Telegramga muvaffaqiyatli yetkazildi. Sirlar ushbu faylga yozilmadi.
+- Oxirgi relizdan keyin ham oldingi 42 ta servis o‘zgarishsiz ishlamoqda.
+- Alohida baza dumpidan tiklash qayta tekshirildi (8 jadval); vaqtinchalik test bazalari va sxemalari olib tashlandi.
+- Mahalliy preview to‘xtatildi. Mahalliy resolver eski DNS natijasini ushlab turgani sabab production brauzer testi faqat test jarayonidagi host mapping orqali, haqiqiy TLS sertifikatini tekshirib bajarildi. GitHub runner domenni oddiy DNS bilan muvaffaqiyatli tekshirdi.
+
+## Ekspluatatsiya eslatmasi
+
+Monitoring worker va sayt bir serverda. Shu server butunlay o‘chsa, worker xabar yubora olmaydi; mustaqil tashqi kuzatuv alohida imkoniyat hisoblanadi. Hosting/DNS tarqalishidan boshqa ochiq bloklovchi masala yo‘q.
