@@ -91,6 +91,18 @@ Monitoring worker va sayt bir serverda. Shu server butunlay o‘chsa, worker xab
 - [x] CI build/deploy ajratildi; production secrets faqat master uchun environmentga ko‘chirildi.
 - [x] Cheklangan root deploy helperi, alohida worker UID/env va Nginx limitlari tayyorlandi.
 - [x] Deploy arxiviga oid 8 ta Python testi, haqiqiy 97.7 MiB paketni ochish va desktop/mobil brauzer sinovi o‘tdi.
-- [ ] Tekshirilgan kodni CI/CD orqali productionga chiqarish.
-- [ ] Parollarni xavfsiz yangilash, production va qo‘shni servislarni tekshirish.
+- [x] Tekshirilgan kod CI/CD orqali productionga chiqarildi.
+- [x] Parollar xavfsiz yangilandi; production va qo‘shni servislar tekshirildi.
 - Birinchi cutoverda eski va yangi worker bir vaqtda ishga tushishga urindi; health gate faqat My Projectsni to‘xtatdi. Root helper ikkala xizmatni avval to‘liq to‘xtatib, keyin boshlaydigan tartibga tuzatildi. Qo‘lda tiklashdan keyin yangi web va worker heartbeat sog‘lom; CI deploy qayta bajarilmoqda.
+
+## Xavfsizlik relizi yakuni — 2026-10-08
+
+- Dastur relizi: `bd6b057b54ed3cbeccd269153f9fd2aa19c46253`.
+- CI/CD: https://github.com/JavoxirJava/my-projects/actions/runs/37733510717 — verify/deploy yashil.
+- 13 Node testi, 8 Python testi, typecheck/build, dependency audit va desktop/mobil brauzer tekshiruvi muvaffaqiyatli.
+- Production yangi login/logout, __Host cookie, nonce CSP va katta so‘rovning 413 bilan rad etilishi tekshirildi.
+- Web va worker alohida UID/env ostida sog‘lom, worker heartbeat relizga mos; yangi parolli backup sent.
+- Baza alohida DBga tiklandi: 9 jadval, 3 loyiha, 3 guruh. Mavjud ma’lumotlar saqlandi.
+- 43 qo‘shni servis solishtirildi: 42 tasi o‘zgarmagan, oldindan qayta ishga tushishda bo‘lgan files-bot holati alohida qayd etildi. Uning kodi/xizmati o‘zgartirilmadi. Boshqa Nginx vhostlari o‘zgarmagan.
+- Yangi kirish ma’lumotlari faqat mahalliy `.private/ACCESS.md` (0600)da va root recovery nusxasida; eski ZIP paroli saqlandi. Parollar GitHub yoki Telegramga qayta yuborilmadi.
+- Batafsil yopilish dalillari va ixtiyoriy keyingi choralar `.private/SECURITY_FIXES.md`da.
