@@ -269,13 +269,15 @@ def main():
         previous = current.resolve() if current.is_symlink() else None
         activate(current, release)
         try:
-            run('systemctl', 'restart', 'my-projects', 'my-projects-worker')
+            run('systemctl', 'stop', 'my-projects', 'my-projects-worker')
+            run('systemctl', 'start', 'my-projects', 'my-projects-worker')
             health(revision)
             run('systemctl', 'enable', 'my-projects', 'my-projects-worker')
         except Exception:
             if previous and (previous / 'SECURITY_VERSION').is_file():
                 activate(current, previous)
-                run('systemctl', 'restart', 'my-projects', 'my-projects-worker')
+                run('systemctl', 'stop', 'my-projects', 'my-projects-worker')
+                run('systemctl', 'start', 'my-projects', 'my-projects-worker')
             else:
                 # Old code cannot safely consume new session semantics. Fail closed.
                 run('systemctl', 'stop', 'my-projects', 'my-projects-worker')

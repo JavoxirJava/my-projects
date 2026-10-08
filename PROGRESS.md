@@ -93,3 +93,4 @@ Monitoring worker va sayt bir serverda. Shu server butunlay o‘chsa, worker xab
 - [x] Deploy arxiviga oid 8 ta Python testi, haqiqiy 97.7 MiB paketni ochish va desktop/mobil brauzer sinovi o‘tdi.
 - [ ] Tekshirilgan kodni CI/CD orqali productionga chiqarish.
 - [ ] Parollarni xavfsiz yangilash, production va qo‘shni servislarni tekshirish.
+- Birinchi cutoverda eski va yangi worker bir vaqtda ishga tushishga urindi; health gate faqat My Projectsni to‘xtatdi. Root helper ikkala xizmatni avval to‘liq to‘xtatib, keyin boshlaydigan tartibga tuzatildi. Qo‘lda tiklashdan keyin yangi web va worker heartbeat sog‘lom; CI deploy qayta bajarilmoqda.
