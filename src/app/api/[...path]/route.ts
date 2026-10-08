@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { pool, init, transaction, config } from "../../../lib/db.ts";
-import {
-  encrypt,
-  decrypt,
-  verifyPassword,
-  hashPassword,
-} from "../../../lib/crypto.ts";
+import { pool, init, config } from "../../../lib/db.ts";
+import { encrypt, decrypt, hashPassword } from "../../../lib/crypto.ts";
 import {
   authenticated,
   sameOrigin,
   login,
   logout,
   sessionCookie,
+  legacyCookie,
+  authorizedTransaction,
+  securityEvent,
+  rateLimit,
+  verifyCurrentPassword,
+  sessionId,
+  requireRecentAuth,
 } from "../../../lib/auth.ts";
 import { projectSchema, groupSchema } from "../../../lib/model.ts";
 import {
@@ -19,7 +21,14 @@ import {
   maskProject,
   readZip,
   restore,
+  validateSnapshot,
 } from "../../../lib/backups.ts";
+import {
+  readJson,
+  readBody,
+  httpError,
+  RESTORE_BODY_LIMIT,
+} from "../../../lib/request.ts";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function json(
@@ -50,11 +59,33 @@ async function handle(
     }
     if (method !== "GET") sameOrigin(req);
     if (route === "auth/login" && method === "POST") {
-      const token = await login(req, await req.json());
-      return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token) });
+      const token = await login(req);
+      const response = json({ ok: true }, 200, {
+        "Set-Cookie": sessionCookie(token),
+      });
+      if (process.env.APP_URL?.startsWith("https:"))
+        response.headers.append("Set-Cookie", legacyCookie());
+      return response;
     }
     if (!(await authenticated(req)))
       return json({ error: "Kirish talab qilinadi" }, 401);
+    if (route === "auth/verify" && method === "POST") {
+      const body = await readJson(req, 8 * 1024);
+      const verified = await verifyCurrentPassword(req, body.password);
+      await authorizedTransaction(req, async (db) => {
+        const cfg = await config(db);
+        if (
+          cfg.authVersion !== verified.authVersion ||
+          cfg.passwordHash !== verified.passwordHash
+        )
+          throw httpError("Qayta kiring", 401);
+        await db.query("UPDATE sessions SET verified_at=now() WHERE id=$1", [
+          sessionId(req),
+        ]);
+        await securityEvent("reauth.success", req, db);
+      });
+      return json({ ok: true });
+    }
     if (route === "auth/logout" && method === "POST") {
       await logout(req);
       return json({ ok: true }, 200, { "Set-Cookie": sessionCookie("", true) });
@@ -77,7 +108,9 @@ async function handle(
         settings: {
           login: cfg.login,
           zipPasswordConfigured: !!cfg.backupPassword,
-          telegramConfigured: !!process.env.TELEGRAM_BOT_TOKEN,
+          telegramConfigured:
+            process.env.TELEGRAM_CONFIGURED === "true" ||
+            !!process.env.TELEGRAM_BOT_TOKEN,
           telegramChatId: process.env.TELEGRAM_CHAT_ID || "",
         },
         backups: backups.rows,
@@ -91,6 +124,8 @@ async function handle(
       path[4] === "reveal" &&
       method === "GET"
     ) {
+      await requireRecentAuth(req);
+      await rateLimit(req, "reveal", 60, 60);
       const p = (
         await pool.query("SELECT data FROM projects WHERE id=$1", [path[1]])
       ).rows[0]?.data;
@@ -103,10 +138,10 @@ async function handle(
       ((path.length === 1 && method === "POST") ||
         (path.length === 2 && method === "PUT"))
     ) {
-      const input = projectSchema.parse(await req.json());
+      const input = projectSchema.parse(await readJson(req));
       if (input.monitor.enabled && !input.monitor.url)
         return json({ error: "Monitoring manzilini kiriting" }, 400);
-      const project = await transaction(async (db) => {
+      const project = await authorizedTransaction(req, async (db) => {
         const old = path[1]
           ? (await db.query("SELECT data FROM projects WHERE id=$1", [path[1]]))
               .rows[0]?.data
@@ -159,7 +194,7 @@ async function handle(
       return json({ project });
     }
     if (path[0] === "projects" && path.length === 2 && method === "DELETE") {
-      await transaction(async (db) => {
+      await authorizedTransaction(req, async (db) => {
         await db.query("DELETE FROM projects WHERE id=$1", [path[1]]);
         await queueBackup(db);
       });
@@ -167,9 +202,9 @@ async function handle(
     }
     if (path[0] === "groups" && ["POST", "PUT", "DELETE"].includes(method)) {
       const input =
-        method === "DELETE" ? null : groupSchema.parse(await req.json());
+        method === "DELETE" ? null : groupSchema.parse(await readJson(req));
       let group: any;
-      await transaction(async (db) => {
+      await authorizedTransaction(req, async (db) => {
         if (method === "DELETE") {
           await db.query("DELETE FROM groups WHERE id=$1", [path[1]]);
           await db.query(
@@ -188,16 +223,25 @@ async function handle(
       return json({ ok: true, group });
     }
     if (route === "settings" && method === "PUT") {
-      const body = await req.json();
-      await transaction(async (db) => {
+      const body = await readJson(req, 16 * 1024);
+      const verified = await verifyCurrentPassword(req, body.currentPassword);
+      if (
+        body.password &&
+        (typeof body.password !== "string" ||
+          body.password.length < 12 ||
+          body.password.length > 1000)
+      )
+        throw httpError("Yangi parol 12–1000 belgidan iborat bo‘lsin", 400);
+      const nextHash = body.password
+        ? await hashPassword(body.password)
+        : undefined;
+      await authorizedTransaction(req, async (db) => {
         const cfg = await config(db);
         if (
-          (body.login || body.password || body.backupPassword) &&
-          !verifyPassword(body.currentPassword || "", cfg.passwordHash)
+          cfg.authVersion !== verified.authVersion ||
+          cfg.passwordHash !== verified.passwordHash
         )
-          throw Object.assign(new Error("Joriy parol noto‘g‘ri"), {
-            status: 400,
-          });
+          throw httpError("Kirish ma’lumotlari o‘zgardi. Qayta kiring.", 401);
         if (body.login) {
           if (typeof body.login !== "string" || body.login.length > 100)
             throw new Error("Login noto‘g‘ri");
@@ -210,7 +254,8 @@ async function handle(
             body.password.length > 1000
           )
             throw new Error("Yangi parol kamida 12 belgidan iborat bo‘lsin");
-          cfg.passwordHash = hashPassword(body.password);
+          cfg.passwordHash = nextHash;
+          cfg.authVersion += 1;
           await db.query("DELETE FROM sessions");
         }
         if (body.backupPassword) {
@@ -223,22 +268,45 @@ async function handle(
           cfg.backupPassword = encrypt(body.backupPassword);
         }
         await db.query("UPDATE app_config SET data=$1 WHERE id=1", [cfg]);
+        await securityEvent(
+          body.password
+            ? "password.changed"
+            : body.backupPassword
+              ? "backup_password.changed"
+              : "settings.changed",
+          req,
+          db,
+        );
         await queueBackup(db);
       });
       return json({ ok: true, relogin: !!body.password });
     }
     if (route === "backups" && method === "POST") {
-      await transaction(queueBackup);
+      await rateLimit(req, "backup.manual", 3, 300);
+      await authorizedTransaction(req, queueBackup);
       return json({ ok: true });
     }
-    if (route === "restore" && method === "POST") {
-      const form = await req.formData();
+    if (
+      (route === "restore" || route === "restore/preview") &&
+      method === "POST"
+    ) {
+      await rateLimit(req, "restore", 4, 300);
+      const bytes = await readBody(req, RESTORE_BODY_LIMIT);
+      const form = await new Response(new Uint8Array(bytes), {
+        headers: { "Content-Type": req.headers.get("content-type") || "" },
+      }).formData();
+      const verified = await verifyCurrentPassword(
+        req,
+        form.get("currentPassword"),
+      );
       const file = form.get("file"),
         password = form.get("password");
       if (
         !(file instanceof File) ||
         file.size > 20 * 1024 * 1024 ||
-        typeof password !== "string"
+        typeof password !== "string" ||
+        password.length < 1 ||
+        password.length > 1000
       )
         return json(
           { error: "ZIP fayl va parol talab qilinadi (20 MB gacha)" },
@@ -248,7 +316,27 @@ async function handle(
         new Uint8Array(await file.arrayBuffer()),
         password,
       );
-      await transaction((db) => restore(db, snapshot));
+      if (route === "restore/preview") {
+        validateSnapshot(snapshot);
+        const current = await pool.query(
+          "SELECT count(*)::int AS count FROM projects",
+        );
+        return json({
+          projects: snapshot.projects.length,
+          groups: snapshot.groups.length,
+          currentProjects: current.rows[0].count,
+        });
+      }
+      await authorizedTransaction(req, async (db) => {
+        const cfg = await config(db);
+        if (
+          cfg.authVersion !== verified.authVersion ||
+          cfg.passwordHash !== verified.passwordHash
+        )
+          throw httpError("Qayta kiring", 401);
+        await restore(db, snapshot);
+        await securityEvent("backup.restored", req, db);
+      });
       return json({ ok: true });
     }
     return json({ error: "Topilmadi" }, 404);
@@ -270,10 +358,40 @@ async function handle(
     return json(
       {
         error:
-          status >= 500 ? "Server bilan ulanishda xato. Qayta urinib ko‘ring." : e instanceof SyntaxError ? "So‘rov formati noto‘g‘ri" : e.message || "So‘rov bajarilmadi",
+          status >= 500
+            ? "Server bilan ulanishda xato. Qayta urinib ko‘ring."
+            : e instanceof SyntaxError
+              ? "So‘rov formati noto‘g‘ri"
+              : e.message || "So‘rov bajarilmadi",
       },
       status,
     );
   }
 }
-export { handle as GET, handle as POST, handle as PUT, handle as DELETE };
+let activeRequests = 0;
+let activeRestores = 0;
+async function boundedHandle(
+  req: Request,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  const path = (await context.params).path.join("/");
+  const restoring = path === "restore" || path === "restore/preview";
+  if (restoring && activeRestores >= 1)
+    return json({ error: "Boshqa tiklash tugashini kuting." }, 429);
+  if (activeRequests >= 12)
+    return json({ error: "Server band. Qayta urinib ko‘ring." }, 503);
+  activeRequests++;
+  if (restoring) activeRestores++;
+  try {
+    return await handle(req, context);
+  } finally {
+    activeRequests--;
+    if (restoring) activeRestores--;
+  }
+}
+export {
+  boundedHandle as GET,
+  boundedHandle as POST,
+  boundedHandle as PUT,
+  boundedHandle as DELETE,
+};

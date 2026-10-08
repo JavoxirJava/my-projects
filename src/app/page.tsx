@@ -1,4 +1,6 @@
 import Workspace from "../components/workspace";
-export default function Page() {
+import { connection } from "next/server";
+export default async function Page() {
+  await connection();
   return <Workspace />;
 }

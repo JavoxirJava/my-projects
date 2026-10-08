@@ -1,18 +1,18 @@
 [Unit]
-Description=My Projects isolated PM2 applications
+Description=My Projects isolated background worker
 After=network-online.target postgresql.service
 Wants=network-online.target
 [Service]
 Type=forking
-User=myprojects
-Group=myprojects
+User=myprojects-worker
+Group=myprojects-worker
 WorkingDirectory=/srv/my-projects/current
 Environment=PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin
-Environment=PM2_HOME=/var/lib/my-projects/pm2
-Environment=HOME=/var/lib/my-projects
-PIDFile=/var/lib/my-projects/pm2/pm2.pid
-ExecStart=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 start /srv/my-projects/current/deploy/ecosystem.config.cjs
-ExecReload=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 startOrRestart /srv/my-projects/current/deploy/ecosystem.config.cjs --update-env
+Environment=PM2_HOME=/var/lib/my-projects-worker/pm2
+Environment=HOME=/var/lib/my-projects-worker
+PIDFile=/var/lib/my-projects-worker/pm2/pm2.pid
+ExecStart=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 start /srv/my-projects/current/deploy/worker.config.cjs
+ExecReload=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 startOrRestart /srv/my-projects/current/deploy/worker.config.cjs --update-env
 ExecStop=/opt/node/bin/node /opt/node/lib/node_modules/pm2/bin/pm2 kill
 Restart=on-failure
 RestartSec=10
@@ -22,8 +22,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/my-projects
-MemoryMax=800M
+ReadWritePaths=/var/lib/my-projects-worker
+MemoryMax=300M
 TasksMax=128
 CapabilityBoundingSet=
 RestrictSUIDSGID=yes

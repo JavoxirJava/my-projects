@@ -10,9 +10,11 @@ mkdir -p "$staging/.next" "$staging/deploy"
 cp -a .next/static "$staging/.next/static"
 if [ -d public ]; then cp -a public "$staging/public"; fi
 cp -a scripts src "$staging/"
-cp deploy/ecosystem.config.cjs "$staging/deploy/"
+cp deploy/ecosystem.config.cjs deploy/worker.config.cjs "$staging/deploy/"
+printf '1\n' > "$staging/SECURITY_VERSION"
 cp package.json package-lock.json "$staging/"
 (cd "$staging" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
+find "$staging" -type f -name '.env*' -delete
 printf '%s\n' "$revision" > "$staging/REVISION"
 mkdir -p artifacts
 tar --dereference --hard-dereference -czf "artifacts/$revision.tar.gz" -C "$staging" .

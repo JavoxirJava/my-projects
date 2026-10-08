@@ -1,6 +1,6 @@
 import {
   randomBytes,
-  scryptSync,
+  scrypt,
   timingSafeEqual,
   createCipheriv,
   createDecipheriv,
@@ -36,15 +36,38 @@ export function decrypt(value: string): string {
     c.final(),
   ]).toString();
 }
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  return salt + ":" + scryptSync(password, salt, 64).toString("hex");
+let passwordJobs = 0;
+async function derivePassword(password: string, salt: string): Promise<Buffer> {
+  if (passwordJobs >= 2)
+    throw Object.assign(
+      new Error("Server band. Birozdan keyin qayta urinib ko‘ring."),
+      { status: 503 },
+    );
+  passwordJobs++;
+  try {
+    return await new Promise<Buffer>((resolve, reject) => {
+      scrypt(password, salt, 64, (error, key) =>
+        error ? reject(error) : resolve(key),
+      );
+    });
+  } finally {
+    passwordJobs--;
+  }
 }
-export function verifyPassword(password: string, hash: string): boolean {
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  return salt + ":" + (await derivePassword(password, salt)).toString("hex");
+}
+export async function verifyPassword(
+  password: unknown,
+  hash: string,
+): Promise<boolean> {
+  if (typeof password !== "string" || password.length > 4000) return false;
   const [salt, h] = hash.split(":");
-  if (!salt || !h) return false;
+  if (!/^[a-f0-9]{32}$/.test(salt || "") || !/^[a-f0-9]{128}$/.test(h || ""))
+    return false;
   const expected = Buffer.from(h, "hex"),
-    actual = scryptSync(password, salt, 64);
+    actual = await derivePassword(password, salt);
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 export function tokenHash(value: string): string {

@@ -2,17 +2,33 @@ import { pool, init, transaction } from "../src/lib/db.ts";
 import { decrypt } from "../src/lib/crypto.ts";
 import { createZip } from "../src/lib/backups.ts";
 import { probe, shouldNotify } from "../src/lib/monitor.ts";
-import { telegram as callTelegram, sendMessage as sendTelegramMessage } from "../src/lib/telegram.ts";
+import {
+  telegram as callTelegram,
+  sendMessage as sendTelegramMessage,
+} from "../src/lib/telegram.ts";
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let running = true;
 const shutdown = new AbortController();
-function stop() { running = false; shutdown.abort(); }
+function stop() {
+  running = false;
+  shutdown.abort();
+}
 process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
-const telegram = (method: string, body: Record<string, unknown> | FormData) => callTelegram(method, body, shutdown.signal);
-const sendMessage = (message: string) => sendTelegramMessage(message, shutdown.signal);
+const telegram = (method: string, body: Record<string, unknown> | FormData) =>
+  callTelegram(method, body, shutdown.signal);
+const sendMessage = (message: string) =>
+  sendTelegramMessage(message, shutdown.signal);
 async function heartbeat() {
-  await pool.query("INSERT INTO runtime VALUES('heartbeat',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [{at: new Date().toISOString(), revision: process.env.REVISION || "development"}]);
+  await pool.query(
+    "INSERT INTO runtime VALUES('heartbeat',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    [
+      {
+        at: new Date().toISOString(),
+        revision: process.env.REVISION || "development",
+      },
+    ],
+  );
 }
 await init();
 const lock = await pool.connect();
@@ -221,6 +237,15 @@ while (running) {
     try {
       await reminders();
       await pool.query("DELETE FROM sessions WHERE expires_at<now()");
+      await pool.query(
+        "DELETE FROM sessions WHERE last_seen_at<now()-interval '30 minutes'",
+      );
+      await pool.query(
+        "DELETE FROM login_limits WHERE reset_at<now()-interval '1 day'",
+      );
+      await pool.query(
+        "DELETE FROM security_events WHERE created_at<now()-interval '90 days'",
+      );
       await pool.query(
         "DELETE FROM backups WHERE status='sent' AND sent_at<now()-interval '90 days'",
       );

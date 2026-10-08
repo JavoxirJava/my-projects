@@ -1,7 +1,9 @@
 import pg from "pg";
 import { hashPassword, encrypt } from "./crypto.ts";
 // Keep one pool across Next.js development module reloads.
-const globalDatabase = globalThis as typeof globalThis & { myProjectsPool?: pg.Pool };
+const globalDatabase = globalThis as typeof globalThis & {
+  myProjectsPool?: pg.Pool;
+};
 function createPool() {
   const instance = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
@@ -10,10 +12,15 @@ function createPool() {
     idleTimeoutMillis: 10000,
     statement_timeout: 30000,
   });
-  instance.on("error", (error) => console.error("Idle database connection error", (error as NodeJS.ErrnoException).code || error.name));
+  instance.on("error", (error) =>
+    console.error(
+      "Idle database connection error",
+      (error as NodeJS.ErrnoException).code || error.name,
+    ),
+  );
   return instance;
 }
-export const pool = globalDatabase.myProjectsPool ??= createPool();
+export const pool = (globalDatabase.myProjectsPool ??= createPool());
 export type DB = Pick<pg.PoolClient, "query">;
 let ready: Promise<void> | undefined;
 export function init() {
@@ -34,13 +41,16 @@ export function init() {
         [
           {
             login: process.env.ADMIN_LOGIN || "admin",
-            passwordHash: hashPassword(process.env.ADMIN_PASSWORD),
+            passwordHash: await hashPassword(process.env.ADMIN_PASSWORD),
             backupPassword: encrypt(process.env.BACKUP_PASSWORD),
           },
         ],
       );
     }
-  })().catch((error) => { ready = undefined; throw error; }));
+  })().catch((error) => {
+    ready = undefined;
+    throw error;
+  }));
 }
 export async function transaction<T>(fn: (db: DB) => Promise<T>): Promise<T> {
   await init();
@@ -61,4 +71,21 @@ export async function transaction<T>(fn: (db: DB) => Promise<T>): Promise<T> {
 export async function config(db: DB = pool) {
   return (await db.query("SELECT data FROM app_config WHERE id=1")).rows[0]
     .data;
+}
+
+// DDL runs only as the migrator. Web/worker retain their DML-only role.
+export async function migrate() {
+  await init();
+  await transaction(async (db) => {
+    await db.query(`
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS auth_version integer NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now();
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS verified_at timestamptz NOT NULL DEFAULT now();
+      CREATE INDEX IF NOT EXISTS login_limits_reset_idx ON login_limits(reset_at);
+      CREATE TABLE IF NOT EXISTS security_events(id bigserial PRIMARY KEY, event text NOT NULL, peer_hash text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+      CREATE INDEX IF NOT EXISTS security_events_created_idx ON security_events(created_at);
+      UPDATE app_config SET data=jsonb_set(data,'{authVersion}','1') WHERE NOT data ? 'authVersion';
+      DELETE FROM sessions WHERE auth_version=0;
+    `);
+  });
 }

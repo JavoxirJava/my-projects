@@ -71,3 +71,25 @@
 ## Ekspluatatsiya eslatmasi
 
 Monitoring worker va sayt bir serverda. Shu server butunlay o‘chsa, worker xabar yubora olmaydi; mustaqil tashqi kuzatuv alohida imkoniyat hisoblanadi. Hosting/DNS tarqalishidan boshqa ochiq bloklovchi masala yo‘q.
+
+## Xavfsizlik auditi — 2026-10-08
+
+- [x] Kod, autentifikatsiya/sessiyalar, ZIP, Telegram, monitoring, CI/CD va loyiha server sozlamalari tekshirildi.
+- [x] Mahalliy salbiy sinovlar va productionda faqat o‘qish tekshiruvlari bajarildi; mavjud xavfsizlik testlari 8/8 o‘tdi.
+- [x] Topilmalar, hujum uchun zarur shartlar, ustuvor tuzatishlar va qabul mezonlari `.private/SECURITY_REVIEW.md`ga yozildi.
+- Batafsil hisobot Git kuzatmaydigan mahalliy faylda saqlanadi; public repoga chiqarilmadi.
+- Ushbu bosqich audit va reja bilan cheklangan. Kod, server va GitHub sozlamalariga tuzatish kiritilmadi; rejadagi xavfsizlik ishlari hali bajarilishi kerak.
+
+## Xavfsizlik tuzatishlari — 2026-10-08
+
+- [x] Sessiya versiyasi va parol almashtirish bilan atomar tekshiruv qo‘shildi.
+- [x] Login/JSON/multipart hajm, tezlik va parallel ish chegaralari qo‘shildi; parol hisoblash asinxron.
+- [x] Qat’iy AES-256 ZIP tiklash, qayta parol tekshiruvi va tiklashdan oldingi sonlar tasdig‘i qo‘shildi.
+- [x] HTTPS `__Host-` cookie, sessiya idle muddati va sirlarni avtomatik yashirish qo‘shildi.
+- [x] Mahalliy ajratilgan bazada 13 ta test va eski sxemadan migratsiya tekshiruvi o‘tdi.
+- [x] Mustaqil Security Review dastur o‘zgarishlarida bloklovchi muammo topmadi.
+- [x] CI build/deploy ajratildi; production secrets faqat master uchun environmentga ko‘chirildi.
+- [x] Cheklangan root deploy helperi, alohida worker UID/env va Nginx limitlari tayyorlandi.
+- [x] Deploy arxiviga oid 8 ta Python testi, haqiqiy 97.7 MiB paketni ochish va desktop/mobil brauzer sinovi o‘tdi.
+- [ ] Tekshirilgan kodni CI/CD orqali productionga chiqarish.
+- [ ] Parollarni xavfsiz yangilash, production va qo‘shni servislarni tekshirish.

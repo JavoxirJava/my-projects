@@ -5,12 +5,22 @@ import {
   Uint8ArrayReader,
   TextReader,
   TextWriter,
+  type Entry,
 } from "@zip.js/zip.js";
 import { randomUUID } from "node:crypto";
 import { config, type DB } from "./db.ts";
 import { encrypt, decrypt } from "./crypto.ts";
 import { projectSchema, groupSchema, type Project } from "./model.ts";
 export async function queueBackup(db: DB) {
+  const pending = (
+    await db.query(
+      "SELECT count(*)::int AS count,coalesce(sum(octet_length(snapshot)),0)::bigint AS bytes FROM backups WHERE status IN ('pending','retry')",
+    )
+  ).rows[0];
+  if (pending.count >= 1000 || Number(pending.bytes) >= 256 * 1024 * 1024)
+    throw new Error(
+      "Zaxira navbati to‘lgan. Telegram yuborishini tekshiring va qayta urinib ko‘ring.",
+    );
   const cfg = await config(db);
   const snapshot = {
     format: "my-projects",
@@ -30,8 +40,13 @@ export async function queueBackup(db: DB) {
     ),
     settings: { login: cfg.login },
   };
+  const text = JSON.stringify(snapshot, null, 2);
+  if (Buffer.byteLength(text) > 20 * 1024 * 1024)
+    throw new Error(
+      "Zaxira hajmi 20 MB chegaradan oshdi. Ma’lumot saqlanmadi.",
+    );
   await db.query("INSERT INTO backups(snapshot,password) VALUES($1,$2)", [
-    encrypt(JSON.stringify(snapshot, null, 2)),
+    encrypt(text),
     cfg.backupPassword,
   ]);
 }
@@ -45,9 +60,20 @@ export async function createZip(snapshot: string, password: string) {
   return writer.close();
 }
 export async function readZip(bytes: Uint8Array, password: string) {
+  if (
+    bytes.byteLength > 20 * 1024 * 1024 ||
+    password.length < 1 ||
+    password.length > 1000
+  )
+    throw new Error("Zaxira hajmi yoki paroli noto‘g‘ri");
   const reader = new ZipReader(new Uint8ArrayReader(bytes));
   try {
-    const entries = await reader.getEntries();
+    const entries: Entry[] = [];
+    for await (const entry of reader.getEntriesGenerator()) {
+      entries.push(entry);
+      if (entries.length > 1)
+        throw new Error("Zaxirada faqat bitta fayl bo‘lishi kerak");
+    }
     if (
       entries.length !== 1 ||
       entries[0].filename !== "my-projects.txt" ||
@@ -55,15 +81,31 @@ export async function readZip(bytes: Uint8Array, password: string) {
     )
       throw new Error("Noto‘g‘ri zaxira fayli");
     const entry = entries[0];
-    if (entry.directory || !entry.getData) throw new Error("Fayl topilmadi");
+    if (
+      entry.directory ||
+      !entry.getData ||
+      !entry.encrypted ||
+      entry.zipCrypto ||
+      entry.extraFieldAES?.strength !== 3
+    )
+      throw new Error("Faqat AES-256 parolli ZIP zaxira qabul qilinadi");
     return JSON.parse(
-      await entry.getData(new TextWriter(), { password, useWebWorkers: false }),
+      await entry.getData(new TextWriter(), {
+        password,
+        useWebWorkers: false,
+        checkAuthenticationCode: true,
+        checkCrc32: true,
+        signal: AbortSignal.timeout(15000),
+        onprogress(size) {
+          if (size > 20 * 1024 * 1024) throw new Error("Zaxira hajmi katta");
+        },
+      }),
     );
   } finally {
     await reader.close();
   }
 }
-export async function restore(db: DB, value: any) {
+export function validateSnapshot(value: any) {
   if (
     value?.format !== "my-projects" ||
     value.version !== 1 ||
@@ -73,6 +115,11 @@ export async function restore(db: DB, value: any) {
     value.groups.length > 1000
   )
     throw new Error("Zaxira formati qo‘llab-quvvatlanmaydi");
+  for (const group of value.groups) groupSchema.parse(group);
+  for (const project of value.projects) projectSchema.parse(project);
+}
+export async function restore(db: DB, value: any) {
+  validateSnapshot(value);
   const groups = value.groups.map((g: any) => ({
     id:
       typeof g.id === "string" && /^[0-9a-f-]{36}$/i.test(g.id)

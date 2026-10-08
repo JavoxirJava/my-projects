@@ -25,7 +25,8 @@ test(
     const { pool } = await import("../src/lib/db.ts");
     const { decrypt } = await import("../src/lib/crypto.ts");
     const { restore } = await import("../src/lib/backups.ts");
-    const { transaction } = await import("../src/lib/db.ts");
+    const { transaction, migrate } = await import("../src/lib/db.ts");
+    await migrate();
     let cookie = "";
     async function call(
       method: string,

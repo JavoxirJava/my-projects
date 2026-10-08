@@ -1,16 +1,18 @@
 name: Verify and deploy
 on:
   push:
-    branches: [main, master]
-    paths-ignore: ['**.md']
+    branches: [master]
+    paths-ignore: ["**.md"]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 concurrency:
-  group: my-projects-production
+  group: my-projects-${{ github.ref }}
   cancel-in-progress: false
 permissions:
   contents: read
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -26,8 +28,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
           cache: npm
@@ -36,8 +40,37 @@ jobs:
       - run: npm test
         env:
           TEST_DATABASE_URL: postgresql://postgres:ci-only-test-password@127.0.0.1:5432/my_projects_test
+      - run: python3 -m unittest discover -s tests -p '*_test.py'
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run build
       - run: bash deploy/package.sh "$GITHUB_SHA"
+      - name: Record package digest
+        run: sha256sum "artifacts/$GITHUB_SHA.tar.gz" > artifacts/package.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ github.sha }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: error
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # No checkout, install, or execution of application code in the secret-bearing job.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-${{ github.sha }}
+          path: artifacts
+      - name: Check package
+        run: |
+          test -f "artifacts/$GITHUB_SHA.tar.gz"
+          digest=$(cut -d ' ' -f 1 artifacts/package.sha256)
+          [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  %s\n' "$digest" "artifacts/$GITHUB_SHA.tar.gz" | sha256sum --check --status
+          printf 'PACKAGE_DIGEST=%s\n' "$digest" >> "$GITHUB_ENV"
       - name: Install isolated deploy identity
         env:
           DEPLOY_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -53,6 +86,9 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           scp -i ~/.ssh/deploy -o IdentitiesOnly=yes "artifacts/$GITHUB_SHA.tar.gz" "$VPS_USER@$VPS_HOST:/srv/my-projects/incoming/$GITHUB_SHA.tar.gz"
-          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/my-projects-apply-release $GITHUB_SHA"
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes "$VPS_USER@$VPS_HOST" "sudo /usr/local/sbin/my-projects-apply-release $GITHUB_SHA $PACKAGE_DIGEST"
       - name: Verify public HTTPS
         run: curl --fail --retry 5 --retry-delay 3 https://my-projects.javohir-dev.uz/api/health
+      - name: Remove ephemeral deploy identity
+        if: always()
+        run: rm -f ~/.ssh/deploy

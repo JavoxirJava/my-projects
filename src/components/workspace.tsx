@@ -178,7 +178,10 @@ async function api(path: string, options: RequestInit = {}) {
   const body = await response
     .json()
     .catch(() => ({ error: "Serverdan javob olinmadi." }));
-  if (!response.ok) throw new Error(body.error || "Amal bajarilmadi.");
+  if (!response.ok)
+    throw Object.assign(new Error(body.error || "Amal bajarilmadi."), {
+      status: response.status,
+    });
   return body;
 }
 function PlatformIcon({
@@ -1698,7 +1701,39 @@ function ProjectDetail({
   onSave: (p: Project) => Promise<void>;
 }) {
   const [revealed, setRevealed] = useState<Record<string, string>>({}),
-    [working, setWorking] = useState(false);
+    [working, setWorking] = useState(false),
+    [reauth, setReauth] = useState(false),
+    [reauthBusy, setReauthBusy] = useState(false);
+  useEffect(() => {
+    if (!Object.keys(revealed).length) return;
+    const timer = setTimeout(() => setRevealed({}), 30000);
+    const hide = () => {
+      if (document.hidden) setRevealed({});
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", hide);
+    };
+  }, [revealed]);
+  async function verifyAgain(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setReauthBusy(true);
+    try {
+      await api("/api/auth/verify", {
+        method: "POST",
+        body: JSON.stringify({ password: new FormData(form).get("password") }),
+      });
+      form.reset();
+      setReauth(false);
+      notify("Parol tasdiqlandi. Hisob parolini ochishingiz mumkin.");
+    } catch (error) {
+      notify((error as Error).message);
+    } finally {
+      setReauthBusy(false);
+    }
+  }
   async function reveal(a: Account, clipboard = false) {
     try {
       const value =
@@ -1707,12 +1742,30 @@ function ProjectDetail({
       if (clipboard) await copy(value);
       else setRevealed((prev) => ({ ...prev, [a.id]: value }));
     } catch (e) {
+      if ((e as { status?: number }).status === 428) setReauth(true);
       notify((e as Error).message);
     }
   }
   return (
     <Modal title={p.name} onClose={onClose} wide>
       <div className="modal-body detail-body">
+        {reauth && (
+          <form onSubmit={verifyAgain} className="settings-card">
+            <Field label="Kirish parolingizni qayta tasdiqlang">
+              <input
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                maxLength={1000}
+                autoFocus
+              />
+            </Field>
+            <Button type="submit" disabled={reauthBusy}>
+              Tasdiqlash
+            </Button>
+          </form>
+        )}
         <div className="detail-meta">
           <span className={`status status-${p.status}`}>
             {statusLabels[p.status]}
@@ -2099,18 +2152,22 @@ function SettingsPanel({
   }
   async function restore(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (
-      !confirm(
-        "Zaxiradagi ma’lumotlar hozirgi loyihalar va guruhlar o‘rniga tiklanadi. Davom etasizmi?",
-      )
-    )
-      return;
+    const form = e.currentTarget;
+    const data = new FormData(form);
     setBusy("restore");
     try {
-      await api("/api/restore", {
+      const preview = await api("/api/restore/preview", {
         method: "POST",
-        body: new FormData(e.currentTarget),
+        body: data,
       });
+      if (
+        !confirm(
+          `${preview.currentProjects} ta mavjud loyiha o‘rniga ${preview.projects} ta loyiha va ${preview.groups} ta guruh tiklanadi. Davom etasizmi?`,
+        )
+      )
+        return;
+      await api("/api/restore", { method: "POST", body: data });
+      form.reset();
       notify("Zaxira muvaffaqiyatli tiklandi.");
       await reload();
     } catch (e) {
@@ -2279,6 +2336,15 @@ function SettingsPanel({
             </div>
           </div>
           <form onSubmit={(e) => void restore(e)}>
+            <Field label="Joriy kirish paroli">
+              <input
+                name="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                required
+                maxLength={1000}
+              />
+            </Field>
             <Field label="ZIP fayl">
               <input
                 type="file"
